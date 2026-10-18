@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Brick Game</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#e0a526">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<style>
+:root{--bg:#ece8df;--fg:#222;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1b1b1d;--fg:#eee}}
+:root[data-theme="dark"]{--bg:#1b1b1d;--fg:#eee}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.dev{background:#e0a526;border-radius:26px;padding:14px;margin:12px 12px 6px;width:min(360px,calc(100vw - 24px));box-sizing:border-box;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.scr{background:#9ead86;border:4px solid #555;border-radius:8px;padding:8px;display:flex;gap:10px}
+canvas{width:58%;aspect-ratio:1/2;display:block}
+.side{flex:1;font:700 13px monospace;color:#1a1f14;white-space:pre-line}
+.side b{display:block;font-size:19px;margin-bottom:10px}
+.side i{display:block;font-style:normal;font-size:20px;margin-bottom:10px}
+.ctl{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding:0 6px}
+.pad{display:grid;grid-template-columns:repeat(3,54px);grid-template-rows:repeat(3,54px);gap:2px}
+button{border:0;border-radius:50%;background:#c0392b;color:#fff;font:700 20px system-ui;box-shadow:0 4px 0 #7b241c;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+button:active{transform:translateY(3px);box-shadow:0 1px 0 #7b241c}
+.pad button{width:52px;height:52px}
+.u{grid-area:1/2}.l{grid-area:2/1}.r{grid-area:2/3}.d{grid-area:3/2}
+.ab{display:flex;flex-direction:column;align-items:center;gap:14px}
+.ab .a{width:84px;height:84px;font-size:28px}
+.ab .m{width:auto;border-radius:14px;padding:8px 14px;font-size:13px;background:#555;box-shadow:0 3px 0 #333}
+.cap{font-size:12px;opacity:.7;margin:4px 12px 16px;text-align:center}
+</style></head><body>
+<div class="dev">
+ <div class="scr"><canvas id="c" width="200" height="400"></canvas>
+  <div class="side"><b id="nm"></b>ОЧКИ<i id="sc">0</i>РЕКОРД<i id="hi">0</i><span id="tip"></span></div></div>
+ <div class="ctl">
+  <div class="pad"><button class="u" data-k="u">▲</button><button class="l" data-k="l">◀</button><button class="r" data-k="r">▶</button><button class="d" data-k="d">▼</button></div>
+  <div class="ab"><button class="a" data-k="a">A</button><button class="m" data-k="m">МЕНЮ</button></div>
+ </div>
+</div>
+<div class="cap">Клавиши: стрелки, пробел — A, Esc — меню</div>
+<script>
+const W=10,H=20,S=20,cv=document.getElementById('c'),cx=cv.getContext('2d'),$=i=>document.getElementById(i);
+let grid,mode='menu',sel=0,sc=0,over=false,G,hi={};
+try{hi=JSON.parse(localStorage.getItem('bg_hi')||'{}')}catch(e){}
+const R=n=>Math.floor(Math.random()*n);
+const clr=()=>grid=Array.from({length:H},()=>Array(W).fill(0));
+const set=(x,y)=>{if(x>=0&&x<W&&y>=0&&y<H)grid[y][x]=1};
+const sprite=(m,x,y)=>m.forEach((r,j)=>r.forEach((v,i)=>v&&set(x+i,y+j)));
+
+/* ТЕТРИС */
+const P=[[[1,1,1,1]],[[1,1],[1,1]],[[0,1,0],[1,1,1]],[[1,0,0],[1,1,1]],[[0,0,1],[1,1,1]],[[0,1,1],[1,1,0]],[[1,1,0],[0,1,1]]];
+const T={name:'ТЕТРИС',
+init(){this.b=Array.from({length:H},()=>Array(W).fill(0));this.lines=0;this.nw()},
+nw(){this.p=P[R(7)];this.x=3;this.y=0;if(!this.f(this.p,this.x,this.y))over=true},
+f(m,x,y){return m.every((r,j)=>r.every((v,i)=>!v||(x+i>=0&&x+i<W&&y+j<H&&!this.b[y+j][x+i])))},
+tick(){if(this.f(this.p,this.x,this.y+1))this.y++;else this.lock()},
+lock(){this.p.forEach((r,j)=>r.forEach((v,i)=>v&&(this.b[this.y+j][this.x+i]=1)));
+ let n=0;this.b=this.b.filter(r=>{if(r.every(v=>v)){n++;return false}return true});
+ while(this.b.length<H)this.b.unshift(Array(W).fill(0));
+ sc+=[0,100,300,500,800][n];this.lines+=n;this.nw()},
+key(k){const p=this.p;
+ if(k=='l'&&this.f(p,this.x-1,this.y))this.x--;
+ if(k=='r'&&this.f(p,this.x+1,this.y))this.x++;
+ if(k=='u'){const m=p[0].map((_,i)=>p.map(r=>r[i]).reverse());for(const d of[0,-1,1,-2,2])if(this.f(m,this.x+d,this.y)){this.p=m;this.x+=d;break}}
+ if(k=='d')this.tick();
+ if(k=='a'){while(this.f(this.p,this.x,this.y+1))this.y++;this.tick()}},
+ms(){return Math.max(90,500-Math.floor(this.lines/10)*45)},
+draw(){this.b.forEach((r,j)=>r.forEach((v,i)=>v&&set(i,j)));sprite(this.p,this.x,this.y)}};
+
+/* ЗМЕЙКА */
+const N={name:'ЗМЕЙКА',
+init(){this.s=[[5,10],[4,10],[3,10]];this.d=[1,0];this.nd=[1,0];this.food()},
+food(){do{this.fd=[R(W),R(H)]}while(this.s.some(c=>c[0]==this.fd[0]&&c[1]==this.fd[1]))},
+tick(){this.d=this.nd;const h=[this.s[0][0]+this.d[0],this.s[0][1]+this.d[1]];
+ if(h[0]<0||h[0]>=W||h[1]<0||h[1]>=H||this.s.some(c=>c[0]==h[0]&&c[1]==h[1])){over=true;return}
+ this.s.unshift(h);
+ if(h[0]==this.fd[0]&&h[1]==this.fd[1]){sc+=10;this.food()}else this.s.pop()},
+key(k){const m={l:[-1,0],r:[1,0],u:[0,-1],d:[0,1]}[k];if(m&&(m[0]+this.d[0]||m[1]+this.d[1]))this.nd=m},
+ms(){return Math.max(100,320-this.s.length*5)},
+draw(){this.s.forEach(c=>set(c[0],c[1]));set(this.fd[0],this.fd[1])}};
+
+/* ГОНКИ */
+const C=[[0,1,0],[1,1,1],[0,1,0],[1,0,1]];
+const A={name:'ГОНКИ',
+init(){this.x=3;this.e=[];this.t=0;this.s=3},
+chk(){if(this.e.some(c=>Math.abs(c.x-this.x)<3&&c.y+4>16))over=true},
+tick(){this.t++;this.e.forEach(c=>c.y++);
+ this.e=this.e.filter(c=>{if(c.y>=H){sc+=10;return false}return true});
+ if(this.t%9==0){this.s=Math.max(1,Math.min(6,this.s+R(5)-2));
+  const ok=[1,2,3,4,5,6].filter(x=>Math.abs(x-this.s)>=3);
+  this.e.push({x:ok[R(ok.length)],y:-4})}
+ this.chk()},
+key(k){if(k=='l'&&this.x>1)this.x--;if(k=='r'&&this.x<6)this.x++;this.chk()},
+ms(){return Math.max(70,170-Math.floor(sc/10)*2)},
+draw(){for(let y=0;y<H;y++)if((((y-this.t)%4)+4)%4<2){set(0,y);set(9,y)}
+ this.e.forEach(c=>sprite(C,c.x,c.y));sprite(C,this.x,16)}};
+
+/* СТРЕЛЯЛКА */
+const Z={name:'СТРЕЛЯЛКА',
+init(){this.x=4;this.b=[];this.e=[];this.t=0},
+hit(){this.b=this.b.filter(b=>{const i=this.e.findIndex(e=>e.x==b.x&&e.y==b.y);if(i<0)return true;this.e.splice(i,1);sc+=10;return false})},
+tick(){this.t++;this.b.forEach(b=>b.y--);this.b=this.b.filter(b=>b.y>=0);this.hit();
+ const per=Math.max(2,4-Math.floor(sc/400));
+ if(this.t%per==0){this.e.forEach(e=>e.y++);this.hit();if(Math.random()<.7)this.e.push({x:R(W),y:0})}
+ if(this.e.some(e=>e.y>=18))over=true},
+key(k){if(k=='l'&&this.x>1)this.x--;if(k=='r'&&this.x<8)this.x++;
+ if((k=='a'||k=='u')&&this.b.length<5){this.b.push({x:this.x,y:17});this.hit()}},
+ms(){return 160},
+draw(){this.b.forEach(b=>set(b.x,b.y));this.e.forEach(e=>set(e.x,e.y));sprite([[0,1,0],[1,1,1]],this.x-1,18)}};
+
+/* ГОНКИ+ (заряды и стрельба) */
+const B={...A,name:'ГОНКИ+',tip:'A — выстрел',
+init(){A.init.call(this);this.am=3;this.b=[];this.p=[]},
+hit(){this.b=this.b.filter(b=>{const i=this.e.findIndex(c=>b.x>=c.x&&b.x<c.x+3&&b.y>=c.y&&b.y<c.y+4);if(i<0)return true;this.e.splice(i,1);sc+=20;return false})},
+chk(){A.chk.call(this);this.p=this.p.filter(c=>{if(c.x>=this.x&&c.x<this.x+3&&c.y>=16){this.am+=2;sc+=5;return false}return true})},
+tick(){this.b.forEach(b=>b.y-=2);this.b=this.b.filter(b=>b.y>=-1);this.hit();this.p.forEach(c=>c.y++);this.p=this.p.filter(c=>c.y<H);
+ A.tick.call(this);this.hit();if(this.t%9==5)this.p.push({x:Math.max(1,Math.min(8,this.s+R(3)-1)),y:-1})},
+key(k){if(k=='a'||k=='u'){if(this.am>0&&!over){this.am--;this.b.push({x:this.x+1,y:15});this.hit()}}else A.key.call(this,k)},
+info(){return 'Заряды: '+this.am},
+draw(){A.draw.call(this);this.b.forEach(b=>set(b.x,b.y));this.p.forEach(c=>set(c.x,c.y))}};
+
+/* ШАРИК (вверх сквозь бегущие линии) */
+const L={name:'ШАРИК',tip:'▲ вверх сквозь\nпросветы',
+ln(){const r=Array(W).fill(1),g=R(W-1);r[g]=0;if(this.lv<3)r[g+1]=0;return r},
+lvl(){this.rows=Array.from({length:H},(_,y)=>y%4==3&&y<16?this.ln():Array(W).fill(0));this.c=0;this.bx=R(W);this.by=19;this.mx=19},
+init(){this.lv=0;this.lvl()},
+tick(){this.rows.pop();this.c++;this.rows.unshift(this.c%4==0?this.ln():Array(W).fill(0));
+ if(this.rows[this.by][this.bx]){this.by++;if(this.by>=H)over=true}},
+key(k){const r=this.rows;
+ if(k=='l'&&this.bx>0&&!r[this.by][this.bx-1])this.bx--;
+ if(k=='r'&&this.bx<W-1&&!r[this.by][this.bx+1])this.bx++;
+ if(k=='d'&&this.by<H-1&&!r[this.by+1][this.bx])this.by++;
+ if(k=='u'&&this.by>0&&!r[this.by-1][this.bx]){this.by--;if(this.by<this.mx){this.mx=this.by;sc+=2}}
+ if(this.by==0){sc+=50;this.lv++;this.lvl()}},
+ms(){return Math.max(150,420-this.lv*35)},
+info(){return 'Уровень '+(this.lv+1)},
+draw(){this.rows.forEach((r,y)=>r.forEach((v,x)=>v&&set(x,y)));set(this.bx,this.by)}};
+
+/* АРКАНОИД */
+const K={name:'АРКАНОИД',
+fill(){this.br=Array.from({length:4},()=>Array(W).fill(1))},
+init(){this.x=3;this.bx=4;this.by=14;this.dx=1;this.dy=-1;this.lv=0;this.fill()},
+tick(){let nx=this.bx+this.dx,ny=this.by+this.dy;
+ if(nx<0||nx>=W){this.dx*=-1;nx=this.bx+this.dx}
+ if(ny<0){this.dy=1;ny=this.by+1}
+ if(ny>=1&&ny<=4&&this.br[ny-1][nx]){this.br[ny-1][nx]=0;sc+=10;this.dy*=-1;ny=Math.max(0,this.by+this.dy);
+  if(this.br.every(r=>!r.some(v=>v))){this.lv++;this.fill()}}
+ if(ny>=19){if(nx>=this.x&&nx<this.x+3){this.dy=-1;this.dx=nx-this.x-1||(R(2)?1:-1);nx=Math.max(0,Math.min(W-1,this.bx+this.dx));ny=this.by-1}else if(ny>=H){over=true;return}}
+ this.bx=nx;this.by=ny},
+key(k){if(k=='l'&&this.x>0)this.x--;if(k=='r'&&this.x<7)this.x++},
+ms(){return Math.max(110,230-this.lv*12)},
+info(){return 'Уровень '+(this.lv+1)},
+draw(){this.br.forEach((r,j)=>r.forEach((v,i)=>v&&set(i,j+1)));sprite([[1,1,1]],this.x,19);set(this.bx,this.by)}};
+
+/* ПИНГ-ПОНГ */
+const O={name:'ПИНГ-ПОНГ',
+init(){this.x=3;this.cx=3;this.rs()},
+rs(){this.bx=3+R(4);this.by=10;this.dx=R(2)?1:-1;this.dy=R(2)?1:-1},
+tick(){if(Math.random()<.6)this.cx=Math.max(0,Math.min(7,this.cx+Math.sign(this.bx-this.cx-1)));
+ let nx=this.bx+this.dx,ny=this.by+this.dy;
+ if(nx<0||nx>=W){this.dx*=-1;nx=this.bx+this.dx}
+ if(ny<=0){if(nx>=this.cx&&nx<this.cx+3){this.dy=1;this.dx=nx-this.cx-1||this.dx;nx=Math.max(0,Math.min(W-1,this.bx+this.dx));ny=this.by+1}else{sc+=10;this.rs();return}}
+ else if(ny>=19){if(nx>=this.x&&nx<this.x+3){this.dy=-1;this.dx=nx-this.x-1||this.dx;nx=Math.max(0,Math.min(W-1,this.bx+this.dx));ny=this.by-1}else{over=true;return}}
+ this.bx=nx;this.by=ny},
+key(k){if(k=='l'&&this.x>0)this.x--;if(k=='r'&&this.x<7)this.x++},
+ms(){return Math.max(110,230-Math.floor(sc/20)*5)},
+draw(){sprite([[1,1,1]],this.cx,0);sprite([[1,1,1]],this.x,19);set(this.bx,this.by)}};
+
+/* ДУЭЛЬ (враг стреляет обычными и самонаводящимися) */
+const D={name:'ДУЭЛЬ',tip:'A — огонь',
+init(){this.x=4;this.ex=4;this.ed=1;this.lv=0;this.hp=8;this.lf=3;this.b=[];this.m=[];this.t=0},
+tick(){this.t++;
+ this.b.forEach(b=>b.y--);this.b=this.b.filter(b=>b.y>=0);
+ this.b=this.b.filter(b=>{if(b.y<=1&&Math.abs(b.x-this.ex)<=1){this.hp--;sc+=5;return false}return true});
+ if(this.hp<=0){sc+=100;this.lv++;this.hp=8+this.lv*2;this.m=[]}
+ if(this.t%2==0){if(this.ex+this.ed<1||this.ex+this.ed>8||R(6)==0)this.ed*=-1;this.ex+=this.ed}
+ if(this.t%Math.max(4,9-this.lv)==0){let h=R(3)==0;if(h&&this.m.filter(q=>q.h).length>=2)h=false;this.m.push({x:this.ex,y:2,h})}
+ this.m.forEach(m=>{m.y++;if(m.h&&m.y<14&&this.t%2==0)m.x+=Math.sign(this.x-m.x)});
+ this.b=this.b.filter(b=>{const i=this.m.findIndex(m=>m.x==b.x&&Math.abs(m.y-b.y)<=1);if(i<0)return true;this.m.splice(i,1);sc+=5;return false});
+ if(this.m.some(m=>m.y>=18&&Math.abs(m.x-this.x)<=1)){this.lf--;this.m=[];if(this.lf<=0)over=true}
+ this.m=this.m.filter(m=>m.y<H)},
+key(k){if(k=='l'&&this.x>1)this.x--;if(k=='r'&&this.x<8)this.x++;
+ if((k=='a'||k=='u')&&this.b.length<4)this.b.push({x:this.x,y:17})},
+ms(){return Math.max(100,160-this.lv*8)},
+info(){return 'Жизни: '+this.lf+'\nВраг: '+this.hp},
+draw(){sprite([[1,1,1],[0,1,0]],this.ex-1,0);this.b.forEach(b=>set(b.x,b.y));
+ this.m.forEach(m=>{set(m.x,m.y);if(m.h)set(m.x,m.y-1)});sprite([[0,1,0],[1,1,1]],this.x-1,18)}};
+
+const GS=[T,N,A,B,L,K,O,Z,D];
+function pv(){G=GS[sel];sc=0;over=false;G.init()}
+function start(){pv();mode='play'}
+function press(k){
+ if(mode=='menu'){
+  if(k=='l'||k=='r'){sel=(sel+(k=='l'?GS.length-1:1))%GS.length;pv()}
+  else if(k=='a'||k=='u')start();
+ }else if(k=='m'){mode='menu';pv()}
+ else if(over){if(k=='a')start()}
+ else G.key(k);
+ render()}
+
+function render(){
+ clr();G.draw();
+ if(over&&sc>(hi[G.name]||0)){hi[G.name]=sc;try{localStorage.setItem('bg_hi',JSON.stringify(hi))}catch(e){}}
+ cx.fillStyle='#9ead86';cx.fillRect(0,0,200,400);
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+  if(grid[y][x]){cx.fillStyle='#1a1f14';cx.fillRect(x*S+1,y*S+1,18,18);cx.fillStyle='#9ead86';cx.fillRect(x*S+4,y*S+4,12,12);cx.fillStyle='#1a1f14';cx.fillRect(x*S+7,y*S+7,6,6)}
+  else{cx.fillStyle='rgba(26,31,20,.09)';cx.fillRect(x*S+1,y*S+1,18,18)}}
+ if(over){cx.fillStyle='rgba(158,173,134,.85)';cx.fillRect(0,150,200,100);cx.fillStyle='#1a1f14';cx.textAlign='center';
+  cx.font='bold 30px monospace';cx.fillText('КОНЕЦ',100,200);cx.font='bold 15px monospace';cx.fillText('A — заново',100,232)}
+ $('nm').textContent=(mode=='menu'?(sel+1)+'/'+GS.length+'\n':'')+G.name;
+ $('sc').textContent=sc;$('hi').textContent=hi[G.name]||0;
+ $('tip').textContent=mode=='menu'?'◀ ▶ выбор\nA — старт':(G==Z?'A — огонь':G==T?'▲ поворот\nA — сброс':G.tip||'')+(G.info?'\n'+G.info():'');
+}
+function loop(){if(mode=='play'&&!over){G.tick();render()}setTimeout(loop,mode=='play'?G.ms():200)}
+
+let rep;
+document.querySelectorAll('[data-k]').forEach(b=>{const k=b.dataset.k;
+ b.addEventListener('pointerdown',e=>{e.preventDefault();press(k);
+  if('lrd'.includes(k)&&mode=='play'){clearTimeout(rep);rep=setTimeout(function f(){press(k);rep=setTimeout(f,90)},260)}});
+ ['pointerup','pointerleave','pointercancel'].forEach(t=>b.addEventListener(t,()=>clearTimeout(rep)))});
+const KM={ArrowLeft:'l',ArrowRight:'r',ArrowUp:'u',ArrowDown:'d',' ':'a',Enter:'a',Escape:'m'};
+addEventListener('keydown',e=>{const k=KM[e.key];if(k){e.preventDefault();press(k)}});
+
+pv();render();loop();
+</script><script>if('serviceWorker'in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))</script></body></html>
